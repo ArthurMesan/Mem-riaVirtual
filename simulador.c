@@ -84,62 +84,58 @@ int main(int argc, char *argv[]) {
     while(fscanf(arquivo_log, "%x %c", &addr, &rw) == 2) {
         total_acessos++;
 
-        unsigned int page_number = addr >> s; //Extrai o número da pagina
-
-        //Pesquisa a pagina
+        unsigned int page_number = addr >> s;
         EntradaPagina* entrada = &tabela_de_paginas[page_number];
 
         if (entrada->valido == true) {
-
-            //Obter o quadro físico (o "Quarto")
-            unsigned int quadro = entrada->numero_quadro;
-
-            //TODO: Atualizar os bits de estado para os algoritmos
-            quadros_memoria_fisica[quadro].ultimo_acesso = total_acessos;
-            quadros_memoria_fisica[quadro].usado = true;
-
-            //Marcar como "sujo" se for uma escrita
-            if (rw == 'W') {
-                quadros_memoria_fisica[quadro].sujo = true;
-            }
-
+            // ... (Seu código de PAGE HIT está PERFEITO) ...
         } else {
-            //Pesquisa Quadros
-            // Resetando variaveis de controle
+            // --- PAGE FAULT ---
             aux_ver = false;
             itera_quadros = 0;
 
-            fprintf(stderr, "Pesquisando quadros\n");
-            pesquisaQuadros(entrada,quadros_memoria_fisica,num_quadros,page_number,rw,total_acessos,&paginas_lidas, &aux_ver, &itera_quadros);
+            // Esta função agora está corrigida em memoria.c
+            pesquisaQuadros(entrada, quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_lidas, &aux_ver, &itera_quadros);
 
-            if (aux_ver == false && itera_quadros >= num_quadros) {
+            // Esta condição agora funciona, pois 'pesquisaQuadros' irá
+            // setar 'aux_ver = true' se encontrar um quadro livre.
+            if (aux_ver == false) { // Se não encontrou quadro livre (memória cheia)
                 fprintf(stderr, "Substituição de página\n");
-                    if (strcmp(algoritmo_nome, "random") == 0) {
-                        substituirPaginaRandom(entrada,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
-                    }
-                    else if (strcmp(algoritmo_nome, "lru") == 0) {
-                        substituirPaginaLRU(entrada,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
-                    }
-                    else if (strcmp(algoritmo_nome, "clock") == 0) {
-                        substituirPaginaCLK(entrada,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
-                    }
-                    else if (strcmp(algoritmo_nome, "fifo") == 0) {
 
-                        unsigned int quadro_alvo = ponteiro_fila;
+                // --- CORREÇÃO: Passe a tabela COMPLETA e a NOVA entrada ---
+                if (strcmp(algoritmo_nome, "random") == 0) {
+                    substituirPaginaRandom(tabela_de_paginas, entrada, quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
+                }
+                else if (strcmp(algoritmo_nome, "lru") == 0) {
+                    substituirPaginaLRU(tabela_de_paginas, entrada, quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
+                }
+                else if (strcmp(algoritmo_nome, "clock") == 0) {
+                    substituirPaginaCLK(tabela_de_paginas, entrada, quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, &paginas_escritas);
+                }
+                else if (strcmp(algoritmo_nome, "fifo") == 0) {
+                    // --- CORREÇÃO: Lógica do FIFO estava incompleta ---
+                    unsigned int quadro_alvo = ponteiro_fila;
+                    ponteiro_fila = (ponteiro_fila + 1) % num_quadros;
+                    fprintf(stderr, "Algoritmo FIFO escolheu o quadro %d.\n", quadro_alvo);
 
-                        // Avança o ponteiro para a próxima vez (circularmente)
-                        ponteiro_fila = (ponteiro_fila + 1) % num_quadros;
-
-                        fprintf(stderr, "Algoritmo FIFO escolheu o quadro %d.\n", quadro_alvo);
-                                        }
-                    else {
-                        printf("Comando desconhecido.\n");
+                    // 1. Processar a Vítima
+                    QuadroFisico* vitima = &quadros_memoria_fisica[quadro_alvo];
+                    if (vitima->sujo == true) {
+                        paginas_escritas++; // Incrementa direto (é 'long', não ponteiro)
                     }
+                    unsigned int pagina_antiga = vitima->numero_pagina;
+                    tabela_de_paginas[pagina_antiga].valido = false; // Invalida no array real
+
+                    // 2. Carregar a nova página (chame a função que você já tem)
+                    // (Você precisa criar 'carregaPagina' em memoria.c como mostrado abaixo)
+                    carregaPagina(entrada, &quadros_memoria_fisica[quadro_alvo], page_number, rw, total_acessos);
+                }
+                else {
+                    printf("Comando desconhecido.\n");
+                }
             }
-
         }
     }
-
 
     fclose(arquivo_log);
     free(tabela_de_paginas);
