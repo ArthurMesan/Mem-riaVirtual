@@ -1,119 +1,91 @@
 #include "memoria.h"
 
-void carregaPagina(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas,unsigned int* quadro_alvo){
+int encontrarQuadroLivre(QuadroFisico* quadros_memoria_fisica, int num_quadros) {
+    for (int i = 0; i < num_quadros; i++) {
+        if (quadros_memoria_fisica[i].ocupado == false) {
+            return i; // Encontrou um quadro livre
+        }
+    }
+    return -1; // Memória está cheia
+}
 
-    // --- Processar a Vítima (Centralizado) ---
-    QuadroFisico* vitima = &quadros_memoria_fisica[*quadro_alvo];
+int encontrarVitima(QuadroFisico* quadros_memoria_fisica, int num_quadros,
+                    const char* algoritmo_nome, int* ponteiro_fila, int* ponteiro_clock) {
 
+    int quadro_vitima_idx = 0;
+
+    if (strcmp(algoritmo_nome, "random") == 0) {
+        quadro_vitima_idx = rand() % num_quadros;
+        fprintf(stderr, "Random escolheu quadro %d. ", quadro_vitima_idx);
+
+    } else if (strcmp(algoritmo_nome, "lru") == 0) {
+        long menor_timestamp = quadros_memoria_fisica[0].ultimo_acesso;
+        quadro_vitima_idx = 0;
+        for (int i = 1; i < num_quadros; i++) {
+            if (quadros_memoria_fisica[i].ultimo_acesso < menor_timestamp) {
+                menor_timestamp = quadros_memoria_fisica[i].ultimo_acesso;
+                quadro_vitima_idx = i;
+            }
+        }
+        fprintf(stderr, "LRU escolheu quadro %d. ", quadro_vitima_idx);
+
+    } else if (strcmp(algoritmo_nome, "clock") == 0) {
+        while (true) {
+            if (quadros_memoria_fisica[*ponteiro_clock].usado == true) {
+                quadros_memoria_fisica[*ponteiro_clock].usado = false; // Segunda chance
+                *ponteiro_clock = (*ponteiro_clock + 1) % num_quadros; // Avança
+            } else {
+                quadro_vitima_idx = *ponteiro_clock;
+                *ponteiro_clock = (*ponteiro_clock + 1) % num_quadros; // Avança para a próxima
+                break; // Encontrou vítima
+            }
+        }
+        fprintf(stderr, "CLOCK escolheu quadro %d. ", quadro_vitima_idx);
+
+    } else if (strcmp(algoritmo_nome, "fifo") == 0) {
+        quadro_vitima_idx = *ponteiro_fila;
+        *ponteiro_fila = (*ponteiro_fila + 1) % num_quadros; // Avança o ponteiro
+        fprintf(stderr, "FIFO escolheu quadro %d. ", quadro_vitima_idx);
+
+    } else {
+        // Padrão para algoritmo desconhecido é 'random'
+        quadro_vitima_idx = rand() % num_quadros;
+        fprintf(stderr, "Algoritmo '%s' desconhecido, usando Random. Escolhido quadro %d. ", algoritmo_nome, quadro_vitima_idx);
+    }
+
+    return quadro_vitima_idx;
+}
+
+void processarVitima(int quadro_vitima_idx, QuadroFisico* quadros_memoria_fisica,
+                     EntradaPagina* tabela_de_paginas_completa, long* paginas_escritas) {
+
+    QuadroFisico* vitima = &quadros_memoria_fisica[quadro_vitima_idx];
+
+    // Verificar bit sujo e contar
     if (vitima->sujo == true) {
-        (*paginas_escritas)++; // <-- CORREÇÃO BUG 1
-        fprintf(stderr, " -> Página %u (vítima) estava suja. Escrevendo no disco.\n", vitima->numero_pagina);
+        (*paginas_escritas)++;
+        fprintf(stderr, "Página %u (vítima) estava suja. Escrevendo no disco.\n", vitima->numero_pagina);
+    } else {
+        fprintf(stderr, "Página %u (vítima) estava limpa.\n", vitima->numero_pagina);
     }
-    // Invalidar a página antiga na Tabela de Páginas
+
+    // invalidar a página antiga
     unsigned int pagina_antiga = vitima->numero_pagina;
-    tabela_de_paginas[pagina_antiga].valido = false;
-
-    quadros_memoria_fisica[*quadro_alvo].ocupado = true;
-    quadros_memoria_fisica[*quadro_alvo].numero_pagina = page_number;
-    quadros_memoria_fisica[*quadro_alvo].ultimo_acesso = total_acessos;
-    quadros_memoria_fisica[*quadro_alvo].usado = true;
-    quadros_memoria_fisica[*quadro_alvo].sujo = (rw == 'W');
-
-    tabela_de_paginas->valido = true;
-    tabela_de_paginas->numero_quadro = *quadro_alvo;
-
+    tabela_de_paginas_completa[pagina_antiga].valido = false;
 }
 
-void substituirPaginaRandom(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas) {
+void carregarPagina(int quadro_alvo_idx, unsigned int page_number, char rw, long total_acessos,
+                    QuadroFisico* quadros_memoria_fisica, EntradaPagina* entrada_nova) {
 
-    unsigned int quadro_alvo = rand() % num_quadros;
-    fprintf(stderr, "Substituindo página no quadro %d para a página %u\n", quadro_alvo, page_number);
-    QuadroFisico* vitima = &quadros_memoria_fisica[quadro_alvo];
+    QuadroFisico* quadro = &quadros_memoria_fisica[quadro_alvo_idx];
 
-    //Verificação Paginas Escritas
-    if (vitima->sujo == true) { paginas_escritas++; }
+    // Carrega dados no quadro físico
+    quadro->ocupado = true;
+    quadro->numero_pagina = page_number;
+    quadro->ultimo_acesso = total_acessos;
+    quadro->usado = true;
+    quadro->sujo = (rw == 'W'); //pagina já nasce suja se o primeiro acesso for W
 
-
-    unsigned int pagina_antiga = vitima->numero_pagina;
-    tabela_de_paginas[pagina_antiga].valido = false;
-
-    carregaPagina(tabela_de_paginas,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, paginas_escritas, &quadro_alvo);
-
-}
-
-void substituirPaginaLRU(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas) {
-
-    long menor_timestamp = quadros_memoria_fisica[0].ultimo_acesso;
-    int indice_vitima_lru = 0;
-
-    // Começa do 1, já que o 0 é o nosso 'menor' inicial
-    for (int i = 1; i < num_quadros; i++) {
-        if (quadros_memoria_fisica[i].ultimo_acesso < menor_timestamp) {
-            menor_timestamp = quadros_memoria_fisica[i].ultimo_acesso;
-            indice_vitima_lru = i;
-        }
-    }
-    unsigned int quadro_alvo = indice_vitima_lru;
-    carregaPagina(tabela_de_paginas,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, paginas_escritas, &quadro_alvo);
-    fprintf(stderr, "Algoritmo LRU escolheu o quadro %d.\n", quadro_alvo);
-
-}
-
-void substituirPaginaCLK(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas){
-
-    static int ponteiro_clock = 0;
-    unsigned int quadro_alvo;
-    while (true) {
-    // Verifica o quadro apontado pelo ponteiro
-        if (quadros_memoria_fisica[ponteiro_clock].usado == true) {
-            // Dá uma segunda chance: marca como não usado e avança
-            quadros_memoria_fisica[ponteiro_clock].usado = false;
-            ponteiro_clock = (ponteiro_clock + 1) % num_quadros;
-        } else {
-            // Encontrou a vítima! (usado == false)
-            quadro_alvo = ponteiro_clock;
-            // Avança o ponteiro para a próxima vez
-            ponteiro_clock = (ponteiro_clock + 1) % num_quadros;
-            break; // Sai do loop while(true)
-        }
-    }
-    carregaPagina(tabela_de_paginas,quadros_memoria_fisica, num_quadros, page_number, rw, total_acessos, paginas_escritas, &quadro_alvo);
-    fprintf(stderr, "Algoritmo CLOCK escolheu o quadro %d.\n", quadro_alvo);
-}
-
-
-
-
-void pesquisaQuadros(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica,
-    unsigned int num_quadros, unsigned int page_number, char rw, long total_acessos, long int* paginas_lidas, bool* aux_ver, unsigned int* itera_quadros){
-
-    (*paginas_lidas)++;
-    fprintf(stderr, "FALTA DE PAGINA!\n");
-    tabela_de_paginas->valido = true;
-    tabela_de_paginas->numero_quadro = *itera_quadros;
-
-    //Procurando um quadro livre
-    for ((*itera_quadros) = 0; (*itera_quadros) < num_quadros; (*itera_quadros)++)
-    {
-        QuadroFisico* quadro_atual = &quadros_memoria_fisica[*itera_quadros];
-        *aux_ver = *aux_ver && quadro_atual->ocupado;
-
-        if (quadro_atual->ocupado == false) {
-            fprintf(stderr, "Usando quadro livre %d para a página %u\n", *itera_quadros, page_number);
-
-            quadros_memoria_fisica[*itera_quadros].ocupado = true;
-            quadros_memoria_fisica[*itera_quadros].numero_pagina = page_number;
-            quadros_memoria_fisica[*itera_quadros].ultimo_acesso = total_acessos;
-            quadros_memoria_fisica[*itera_quadros].usado = true;
-            quadros_memoria_fisica[*itera_quadros].sujo = (rw == 'W');
-
-            tabela_de_paginas->numero_quadro = *itera_quadros;
-            break;
-        }
-
-    }
+    entrada_nova->valido = true;
+    entrada_nova->numero_quadro = quadro_alvo_idx; // Apontador para o quadro
 }

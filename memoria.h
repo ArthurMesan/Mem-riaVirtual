@@ -1,40 +1,50 @@
 #ifndef MEMORIA_H
 #define MEMORIA_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
-typedef struct
-{
+/**
+ * @brief Representa um Quadro Físico na memória (o "Quarto").
+ */
+typedef struct {
     bool ocupado;
-    unsigned int numero_pagina;
-    bool usado;
-    long ultimo_acesso;
-    bool sujo;
-}QuadroFisico;
+    bool sujo;                     // Dirty-bit (acesso 'W')
+    unsigned int numero_pagina;    // ID da página virtual que está aqui
+    bool usado;                    // Bit de referência (para CLOCK)
+    long ultimo_acesso;            // Timestamp global (para LRU)
+} QuadroFisico;
 
-
-typedef struct
-{
+/**
+ * @brief Representa uma entrada.
+ */
+typedef struct {
     bool valido;
-    unsigned int numero_quadro;
-}EntradaPagina;
+    unsigned int numero_quadro;    // Em qual índice do array de QuadroFisico?
+} EntradaPagina;
 
 
-void substituirPaginaRandom(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica,
-     unsigned int num_quadros, unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas);
+int encontrarQuadroLivre(QuadroFisico* quadros_memoria_fisica, int num_quadros);
 
-void substituirPaginaLRU(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas);
+/**
+ * @brief Executa o algoritmo de substituição escolhido para encontrar uma vítima.
+ * @return O índice (quadro_alvo) da página vítima a ser substituída.
+ */
+int encontrarVitima(QuadroFisico* quadros_memoria_fisica, int num_quadros,
+                    const char* algoritmo_nome, int* ponteiro_fila, int* ponteiro_clock);
 
-void substituirPaginaCLK(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas);
+/**
+ * @brief Processa a vítima: verifica bit sujo, incrementa contador, invalida na tabela.
+ */
+void processarVitima(int quadro_vitima_idx, QuadroFisico* quadros_memoria_fisica,
+                     EntradaPagina* tabela_de_paginas_completa, long* paginas_escritas);
 
-void pesquisaQuadros(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica,
-     unsigned int num_quadros, unsigned int page_number, char rw, long total_acessos, long int* paginas_lidas, bool* aux_ver, unsigned int* itera_quadros);
+/**
+ * @brief Carrega os dados da nova página no quadro físico e atualiza a entrada da tabela.
+ */
+void carregarPagina(int quadro_alvo_idx, unsigned int page_number, char rw, long total_acessos,
+                    QuadroFisico* quadros_memoria_fisica, EntradaPagina* entrada_nova);
 
-void carregaPagina(EntradaPagina* tabela_de_paginas, QuadroFisico* quadros_memoria_fisica, unsigned int num_quadros,
-                 unsigned int page_number, char rw, long total_acessos, long int* paginas_escritas, unsigned int* quadro_alvo);
-
-#endif
+#endif // MEMORIA_H
